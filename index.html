@@ -1,1 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Data Viewer</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container-shadow {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+    <script>
+        // --- SPREADSHEET CONFIGURATION ---
+        // 1. PLACE YOUR GOOGLE SHEET CSV EXPORT LINK HERE.
+        // The format must be: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=YOUR_GID
+        // NOTE: The sheet must be publicly accessible ('Anyone with the link' can view.
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/156ocyQT7qAUlGN3e_AT3CZF_vegCzqagOxK77Ewo8f8/export?format=csv&gid=0';
 
+        // --- DATA STRUCTURE ---
+        // This array will be populated by the fetched CSV data.
+        let spreadsheetData = [];
+        
+        // Helper arrays for populating filters
+        let availableCities = [];
+        // This array maps to Column C, D, E, F, G, H, I (indexes 2 through 8) as Sun-Sat
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        /**
+         * Parses CSV text into an array of JavaScript objects.
+         * IT SKIPS THE FIRST TWO ROWS (INDEX 0 AND 1).
+         * It assumes a strict column order for the data starting on row 3 (index 2):
+         * Column A (Index 0) = Restaurant Name
+         * Column B (Index 1) = City Name (Used for filtering)
+         * Column C onwards = Day Data (MUST be ordered Sun, Mon, Tue, etc., to match the daysOfWeek array)
+         */
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length <= 2) return []; // Need headers, skip row, and at least one data row
+            
+            const data = [];
+
+            // START LOOP AT i = 2 TO SKIP THE FIRST TWO ROWS
+            for (let i = 2; i < lines.length; i++) { 
+                
+                // --- FIX: Use a robust split method that captures ALL fields, including empty ones, while respecting quoted content. ---
+                // This prevents columns from shifting left due to skipped blank cells.
+                const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                
+                // Ensure we have enough columns for Restaurant and City
+                if (values.length < 2) continue;
+
+                const finalObject = {};
+
+                // Helper function to clean and validate cell value
+                const cleanValue = (val) => {
+                    if (val === undefined || val === null) return null; // If value is genuinely missing
+                    
+                    let value = val.trim();
+                    
+                    // Remove surrounding quotes, if present
+                    if (value.startsWith('"') && value.endsWith('"')) {
+                        value = value.substring(1, value.length - 1).trim();
+                    }
+
+                    return value === '' ? null : value; // Returns null if value is empty/whitespace
+                };
+
+                // COLUMN MAPPING BY INDEX 
+                
+                // Column A (Index 0) -> Restaurant
+                finalObject.restaurant = cleanValue(values[0]);
+
+                // --- DATA CLEANUP: Ignore rows based on Restaurant Name (Column A) ---
+
+                // 1. Check for "NOTES:" (case-insensitive)
+                if (finalObject.restaurant && finalObject.restaurant.toUpperCase().includes('NOTES:')) {
+                    continue; // Skip this row as it's a general note
+                }
+
+                // 2. Check for exact match of "* Certain Restrictions Apply"
+                if (finalObject.restaurant === '* Certain Restrictions Apply') {
+                    continue; // Skip this row as it's a disclaimer
+                }
+                
+                // --- END DATA CLEANUP ---
+
+                // Column B (Index 1) -> City (Used for filtering)
+                finalObject.city = cleanValue(values[1]);
+                
+                // Column C (Index 2) onwards -> Days (Sun-Sat)
+                daysOfWeek.forEach((day, index) => {
+                    const valueIndex = index + 2; // Start at index 2 (Column C)
+                    // Because we use a robust split, the valueIndex should map correctly to the column
+                    finalObject[day] = cleanValue(values[valueIndex]);
+                });
+                
+                // CRITICAL CHECK: Row MUST have both a Restaurant (Column A) AND a City (Column B).
+                if (finalObject.restaurant && finalObject.city) {
+                    data.push(finalObject);
+                }
+            }
+            return data;
+        }
+
+
+        /**
+         * Filters and renders the table based on selected cities and day of the week.
+         */
+        function filterTable() {
+            // 1. Get Selected Cities (from checkboxes)
+            const selectedCities = Array.from(document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:checked'))
+                                        .map(cb => cb.value);
+
+            // 2. Get Selected Day (from dropdown)
+            const selectedDay = document.getElementById('dayFilter').value;
+
+            const tbody = document.getElementById('dataBody');
+            tbody.innerHTML = ''; // Clear existing rows
+
+            // Filter the data
+            const filteredData = spreadsheetData.filter(item => {
+                // Check 1: City must be selected
+                const cityMatch = selectedCities.includes(item.city);
+
+                // Check 2: Content for the selected day must be present (not null or empty string)
+                const content = item[selectedDay];
+                const dayMatch = content && content.trim() !== '';
+
+                return cityMatch && dayMatch;
+            });
+
+            // Render filtered data
+            if (filteredData.length === 0) {
+                const row = tbody.insertRow();
+                row.className = 'bg-white';
+                const cell = row.insertCell(0);
+                cell.colSpan = 3;
+                cell.className = 'py-4 px-6 text-center text-gray-500 italic';
+                cell.textContent = `No available information found for the selected cities on ${selectedDay}. Please select at least one City and Day.`;
+            } else {
+                filteredData.forEach(item => {
+                    const row = tbody.insertRow();
+                    row.className = 'bg-white border-b hover:bg-indigo-50 transition duration-150';
+
+                    // City Cell
+                    let cell0 = row.insertCell(0);
+                    cell0.className = 'px-6 py-4 text-gray-900 font-medium';
+                    cell0.textContent = item.city;
+
+                    // Restaurant Cell
+                    let cell1 = row.insertCell(1);
+                    cell1.className = 'px-6 py-4 text-sm text-gray-700';
+                    cell1.textContent = item.restaurant;
+
+                    // Day Content Cell (The promotional/schedule info)
+                    const content = item[selectedDay];
+                    const contentCell = row.insertCell(2);
+                    contentCell.className = 'px-6 py-4 text-sm max-w-lg';
+                    contentCell.innerHTML = `<span class="inline-block px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 mr-2">${selectedDay}</span>${content}`;
+                });
+            }
+        }
+
+        /**
+         * Initializes filter controls and attaches event listeners.
+         */
+        function initializeFilters() {
+            // Re-derive available cities from the fetched data
+            availableCities = [...new Set(spreadsheetData.map(item => item.city))].sort();
+            
+            const cityCheckboxesContainer = document.getElementById('cityCheckboxes');
+            const dayFilter = document.getElementById('dayFilter');
+
+            // Clear previous filters (in case this is called again)
+            cityCheckboxesContainer.innerHTML = '';
+            dayFilter.innerHTML = '';
+
+            // 1. Populate Cities (Checkboxes) - NOW DEFAULT TO UNCHECKED
+            availableCities.forEach(city => {
+                const id = `city-${city.replace(/\s/g, '-')}`;
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = id;
+                checkbox.value = city;
+                checkbox.checked = false; // Default to none selected
+                checkbox.className = 'form-checkbox h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300';
+                checkbox.addEventListener('change', filterTable);
+
+                const label = document.createElement('label');
+                label.htmlFor = id;
+                label.className = 'ml-2 text-sm text-gray-700 font-medium cursor-pointer select-none';
+                label.textContent = city;
+
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                cityCheckboxesContainer.appendChild(div);
+            });
+
+            // 2. Populate Days (Dropdown) - NOW STARTS WITH SUN
+            daysOfWeek.forEach(day => {
+                const option = document.createElement('option');
+                option.value = day;
+                option.textContent = day;
+                dayFilter.appendChild(option);
+            });
+            dayFilter.addEventListener('change', filterTable);
+
+            filterTable(); // Initial render (will show "No available information..." until user selects filters)
+        }
+
+        // Initialize the filters and table rendering once the page loads
+        window.onload = async function() {
+            try {
+                // Fetch the CSV data from the Google Sheet
+                const response = await fetch(SPREADSHEET_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const csvText = await response.text();
+                
+                // Parse the data and assign it to the global variable
+                spreadsheetData = parseCSV(csvText);
+                
+                console.log(`Data loaded successfully. Total ${spreadsheetData.length} rows.`);
+
+                // Now initialize the UI with the fetched data
+                initializeFilters();
+
+            } catch (error) {
+                console.error("Could not load data from Google Sheet:", error);
+                
+                // Display error message to the user in the table area
+                document.getElementById('dataBody').innerHTML = `
+                    <tr class="bg-white">
+                        <td colspan="3" class="py-4 px-6 text-center text-red-600 font-bold italic border-b-2 border-red-200">
+                            Error loading spreadsheet data. Please ensure the Google Sheet is publicly shared 
+                            (File > Share > Publish to the web) and that columns are ordered as: 
+                            **A: Restaurant**, **B: City**, **C-I: Sun-Sat**. Data is expected to start on **Row 3**.
+                            **NOTE: Rows with empty Restaurant (A) or City (B) names are automatically ignored.**
+                        </td>
+                    </tr>
+                `;
+            }
+        };
+    </script>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <h1 class="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-400 pb-2">Restaurant Daily Schedule Viewer</h1>
+        <p class="text-gray-600 mb-6">Select one or more cities and a day of the week to view available promotions or scheduled events. The table only shows items with data for the selected day.</p>
+
+        <!-- Filter Controls -->
+        <div class="bg-white p-6 rounded-xl container-shadow mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- City Filter (Checkboxes/Multi-select) -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Filter by City (Select One or More)</label>
+                    <div id="cityCheckboxes" class="flex flex-wrap gap-x-6 gap-y-3 p-3 border border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-sm text-gray-500 italic">Loading cities...</p>
+                        <!-- City checkboxes are dynamically injected here -->
+                    </div>
+                </div>
+
+                <!-- Day Filter (Dropdown) -->
+                <div>
+                    <label for="dayFilter" class="block text-sm font-medium text-gray-700 mb-1">Select Day of the Week</label>
+                    <select id="dayFilter" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-base">
+                         <option>Loading...</option>
+                        <!-- Day options are dynamically injected here -->
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="overflow-x-auto relative rounded-xl container-shadow border border-gray-200">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-indigo-600 text-white">
+                    <tr>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider rounded-tl-xl">
+                            City
+                        </th>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">
+                            Restaurant
+                        </th>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider rounded-tr-xl">
+                            Available Information for Selected Day
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="dataBody" class="divide-y divide-gray-200">
+                    <!-- Loading message during initial load -->
+                    <tr class="bg-white">
+                        <td colspan="3" class="py-4 px-6 text-center text-gray-500 italic">Loading data from Google Sheet...</td>
+                    </tr>
+                    <!-- Data rows will be injected here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</body>
+</html>
