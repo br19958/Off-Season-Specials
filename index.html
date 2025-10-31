@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Restaurant Data Viewer</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom styles for better aesthetics */
@@ -46,7 +47,7 @@
             const data = [];
 
             // START LOOP AT i = 2 TO SKIP THE FIRST TWO ROWS
-            for (let i = 2; i < lines.length; i++) {
+            for (let i = 2; i < lines.length; i++) { 
                 
                 // --- FIX: Use a robust split method that captures ALL fields, including empty ones, while respecting quoted content. ---
                 // This prevents columns from shifting left due to skipped blank cells.
@@ -71,7 +72,7 @@
                     return value === '' ? null : value; // Returns null if value is empty/whitespace
                 };
 
-                // COLUMN MAPPING BY INDEX
+                // COLUMN MAPPING BY INDEX 
                 
                 // Column A (Index 0) -> Restaurant
                 finalObject.restaurant = cleanValue(values[0]);
@@ -108,29 +109,6 @@
             return data;
         }
 
-        /**
-         * 🔥 NEW FUNCTION: Toggles the checked status of all city checkboxes 
-         * based on the state of the "Select All" checkbox.
-         * @param {HTMLInputElement} source - The "Select All" checkbox element.
-         */
-        function toggleAllCities(source) {
-            // Get all checkboxes that belong to the cities
-            const cityCheckboxes = document.querySelectorAll('#cityCheckboxes input[type="checkbox"]');
-            
-            // Loop through all checkboxes and set their 'checked' property 
-            // to match the 'checked' property of the 'source' (Select All) checkbox.
-            cityCheckboxes.forEach(checkbox => {
-                // IMPORTANT: Ensure the "Select All" checkbox itself is NOT toggled by this loop.
-                // We assume the "All" checkbox has value='all' or id='select-all'.
-                if (checkbox.id !== 'select-all') {
-                    checkbox.checked = source.checked;
-                }
-            });
-
-            // After changing the checked states, re-run the main filter function
-            filterTable();
-        }
-
 
         /**
          * Filters and renders the table based on selected cities and day of the week.
@@ -138,9 +116,7 @@
         function filterTable() {
             // 1. Get Selected Cities (from checkboxes)
             const selectedCities = Array.from(document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:checked'))
-                                         .map(cb => cb.value)
-                                         // Filter out the 'all' value from the list of selected cities
-                                         .filter(value => value !== 'all'); 
+                                        .map(cb => cb.value);
 
             // 2. Get Selected Day (from dropdown)
             const selectedDay = document.getElementById('dayFilter').value;
@@ -206,28 +182,7 @@
             cityCheckboxesContainer.innerHTML = '';
             dayFilter.innerHTML = '';
 
-            // 1a. 🔥 NEW: Add the 'Select All' Checkbox First
-            const allCheckbox = document.createElement('input');
-            allCheckbox.type = 'checkbox';
-            allCheckbox.id = 'select-all'; // Unique ID
-            allCheckbox.value = 'all'; // Value to be filtered out in filterTable
-            allCheckbox.className = 'form-checkbox h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300';
-            allCheckbox.addEventListener('change', function() {
-                toggleAllCities(this); // Call the new toggle function
-            });
-
-            const allLabel = document.createElement('label');
-            allLabel.htmlFor = 'select-all';
-            allLabel.className = 'ml-2 text-sm text-gray-900 font-bold cursor-pointer select-none'; // Bold text for "All"
-            allLabel.textContent = 'ALL CITIES';
-
-            const allDiv = document.createElement('div');
-            allDiv.className = 'flex items-center pb-2 border-b border-indigo-200 w-full md:w-auto mb-2';
-            allDiv.appendChild(allCheckbox);
-            allDiv.appendChild(allLabel);
-            cityCheckboxesContainer.appendChild(allDiv);
-            
-            // 1b. Populate Individual Cities (Checkboxes)
+            // 1. Populate Cities (Checkboxes) - NOW DEFAULT TO UNCHECKED
             availableCities.forEach(city => {
                 const id = `city-${city.replace(/\s/g, '-')}`;
                 const checkbox = document.createElement('input');
@@ -305,4 +260,56 @@
         <h1 class="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-400 pb-2">Restaurant Daily Schedule Viewer</h1>
         <p class="text-gray-600 mb-6">Select one or more cities and a day of the week to view available promotions or scheduled events. The table only shows items with data for the selected day.</p>
 
+        <!-- Filter Controls -->
         <div class="bg-white p-6 rounded-xl container-shadow mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- City Filter (Checkboxes/Multi-select) -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Filter by City (Select One or More)</label>
+                    <div id="cityCheckboxes" class="flex flex-wrap gap-x-6 gap-y-3 p-3 border border-gray-300 rounded-lg bg-gray-50">
+                        <p class="text-sm text-gray-500 italic">Loading cities...</p>
+                        <!-- City checkboxes are dynamically injected here -->
+                    </div>
+                </div>
+
+                <!-- Day Filter (Dropdown) -->
+                <div>
+                    <label for="dayFilter" class="block text-sm font-medium text-gray-700 mb-1">Select Day of the Week</label>
+                    <select id="dayFilter" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-base">
+                         <option>Loading...</option>
+                        <!-- Day options are dynamically injected here -->
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="overflow-x-auto relative rounded-xl container-shadow border border-gray-200">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-indigo-600 text-white">
+                    <tr>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider rounded-tl-xl">
+                            City
+                        </th>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">
+                            Restaurant
+                        </th>
+                        <th scope="col" class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider rounded-tr-xl">
+                            Available Information for Selected Day
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="dataBody" class="divide-y divide-gray-200">
+                    <!-- Loading message during initial load -->
+                    <tr class="bg-white">
+                        <td colspan="3" class="py-4 px-6 text-center text-gray-500 italic">Loading data from Google Sheet...</td>
+                    </tr>
+                    <!-- Data rows will be injected here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</body>
+</html>
