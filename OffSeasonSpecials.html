@@ -1,97 +1,82 @@
 <script>
     // --- SPREADSHEET CONFIGURATION ---
+    // 1. PLACE YOUR GOOGLE SHEET CSV EXPORT LINK HERE.
+    // The format must be: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=YOUR_GID
+    // NOTE: The sheet must be publicly accessible ('Anyone with the link' can view.
     const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/156ocyQT7qAUlGN3e_AT3CZF_vegCzqagOxK77Ewo8f8/export?format=csv&gid=0';
 
     // --- DATA STRUCTURE ---
+    // This array will be populated by the fetched CSV data.
     let spreadsheetData = [];
+    
+    // Helper arrays for populating filters
     let availableCities = [];
+    // This array maps to Column C, D, E, F, G, H, I (indexes 2 through 8) as Sun-Sat
     const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const ALL_CITIES_ID = 'city-all';
-
 
     /**
-     * LOGIC FOR 'SELECT ALL' CHECKBOX
-     * Checks/Unchecks all individual city boxes and triggers the filter.
+     * Parses CSV text into an array of JavaScript objects.
      */
-    function toggleAllCities(event) {
-        // Get the desired state from the 'All Cities' checkbox
-        const isChecked = event.target.checked;
-        
-        // Find all individual city checkboxes
-        const cityCheckboxes = document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:not(#' + ALL_CITIES_ID + ')');
-        
-        // Apply the 'checked' state to all of them
-        cityCheckboxes.forEach(checkbox => {
-            checkbox.checked = isChecked;
-        });
-
-        // After changing the states, filter the table
-        filterTable();
-    }
-
-
-    /**
-     * LOGIC FOR INDIVIDUAL CITY CHECKBOXES
-     * Handles unchecking the 'All' checkbox when any individual city is unchecked.
-     */
-    function handleIndividualCityChange() {
-        const allCheckbox = document.getElementById(ALL_CITIES_ID);
-        if (!allCheckbox) {
-            filterTable(); // Fallback if 'All' isn't loaded yet
-            return;
-        }
-
-        // Get all individual city checkboxes
-        const individualCheckboxes = document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:not(#' + ALL_CITIES_ID + ')');
-        
-        // Check if ALL individual checkboxes are checked
-        const allChecked = Array.from(individualCheckboxes).every(checkbox => checkbox.checked);
-
-        // Synchronize the 'All' checkbox state
-        allCheckbox.checked = allChecked;
-
-        // Always run the main filter logic
-        filterTable();
-    }
-
-    // --- ORIGINAL parseCSV FUNCTION (NO CHANGES NEEDED) ---
     function parseCSV(csvText) {
         const lines = csvText.trim().split('\n');
-        if (lines.length <= 2) return []; 
+        if (lines.length <= 2) return []; // Need headers, skip row, and at least one data row
         
         const data = [];
 
+        // START LOOP AT i = 2 TO SKIP THE FIRST TWO ROWS
         for (let i = 2; i < lines.length; i++) { 
+            
+            // --- FIX: Use a robust split method that captures ALL fields, including empty ones, while respecting quoted content. ---
             const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            
             if (values.length < 2) continue;
 
             const finalObject = {};
 
+            // Helper function to clean and validate cell value
             const cleanValue = (val) => {
-                if (val === undefined || val === null) return null; 
+                if (val === undefined || val === null) return null; // If value is genuinely missing
+                
                 let value = val.trim();
+                
+                // Remove surrounding quotes, if present
                 if (value.startsWith('"') && value.endsWith('"')) {
                     value = value.substring(1, value.length - 1).trim();
                 }
-                return value === '' ? null : value; 
+
+                return value === '' ? null : value; // Returns null if value is empty/whitespace
             };
 
+            // COLUMN MAPPING BY INDEX 
+            
+            // Column A (Index 0) -> Restaurant
             finalObject.restaurant = cleanValue(values[0]);
 
+            // --- DATA CLEANUP: Ignore rows based on Restaurant Name (Column A) ---
+
+            // 1. Check for "NOTES:" (case-insensitive)
             if (finalObject.restaurant && finalObject.restaurant.toUpperCase().includes('NOTES:')) {
-                continue; 
-            }
-            if (finalObject.restaurant === '* Certain Restrictions Apply') {
-                continue; 
+                continue; // Skip this row as it's a general note
             }
 
+            // 2. Check for exact match of "* Certain Restrictions Apply"
+            if (finalObject.restaurant === '* Certain Restrictions Apply') {
+                continue; // Skip this row as it's a disclaimer
+            }
+            
+            // --- END DATA CLEANUP ---
+
+            // Column B (Index 1) -> City (Used for filtering)
             finalObject.city = cleanValue(values[1]);
             
+            // Column C (Index 2) onwards -> Days (Sun-Sat)
             daysOfWeek.forEach((day, index) => {
-                const valueIndex = index + 2; 
+                const valueIndex = index + 2; // Start at index 2 (Column C)
+                // Because we use a robust split, the valueIndex should map correctly to the column
                 finalObject[day] = cleanValue(values[valueIndex]);
             });
             
+            // CRITICAL CHECK: Row MUST have both a Restaurant (Column A) AND a City (Column B).
             if (finalObject.restaurant && finalObject.city) {
                 data.push(finalObject);
             }
@@ -102,12 +87,10 @@
 
     /**
      * Filters and renders the table based on selected cities and day of the week.
-     * CRITICAL FIX: The logic here ensures it only looks at CHECKED individual boxes.
      */
     function filterTable() {
         // 1. Get Selected Cities (from checkboxes)
-        // Find all CHECKED individual city checkboxes (excluding the 'All' checkbox)
-        const citiesToFilter = Array.from(document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:checked:not(#' + ALL_CITIES_ID + ')'))
+        const selectedCities = Array.from(document.querySelectorAll('#cityCheckboxes input[type="checkbox"]:checked'))
                                      .map(cb => cb.value);
 
         // 2. Get Selected Day (from dropdown)
@@ -115,24 +98,24 @@
 
         const tbody = document.getElementById('dataBody');
         tbody.innerHTML = ''; // Clear existing rows
-        
-        // If no city is selected, show the "Please select" message.
-        if (citiesToFilter.length === 0) {
-             const row = tbody.insertRow();
-             row.className = 'bg-white';
-             const cell = row.insertCell(0);
-             cell.colSpan = 3;
-             cell.className = 'py-4 px-6 text-center text-gray-500 italic';
-             cell.textContent = `Please select at least one City and Day.`;
-             return;
+
+        // If no city is selected, display the instruction message.
+        if (selectedCities.length === 0) {
+            const row = tbody.insertRow();
+            row.className = 'bg-white';
+            const cell = row.insertCell(0);
+            cell.colSpan = 3;
+            cell.className = 'py-4 px-6 text-center text-gray-500 italic';
+            cell.textContent = `Please select at least one City and Day.`;
+            return;
         }
 
         // Filter the data
         const filteredData = spreadsheetData.filter(item => {
-            // Check 1: City must be in the list of selected cities
-            const cityMatch = citiesToFilter.includes(item.city);
+            // Check 1: City must be selected
+            const cityMatch = selectedCities.includes(item.city);
 
-            // Check 2: Content for the selected day must be present
+            // Check 2: Content for the selected day must be present (not null or empty string)
             const content = item[selectedDay];
             const dayMatch = content && content.trim() !== '';
 
@@ -152,14 +135,17 @@
                 const row = tbody.insertRow();
                 row.className = 'bg-white border-b hover:bg-indigo-50 transition duration-150';
 
+                // City Cell
                 let cell0 = row.insertCell(0);
                 cell0.className = 'px-6 py-4 text-gray-900 font-medium';
                 cell0.textContent = item.city;
 
+                // Restaurant Cell
                 let cell1 = row.insertCell(1);
                 cell1.className = 'px-6 py-4 text-sm text-gray-700';
                 cell1.textContent = item.restaurant;
 
+                // Day Content Cell (The promotional/schedule info)
                 const content = item[selectedDay];
                 const contentCell = row.insertCell(2);
                 contentCell.className = 'px-6 py-4 text-sm max-w-lg';
@@ -172,46 +158,26 @@
      * Initializes filter controls and attaches event listeners.
      */
     function initializeFilters() {
+        // Re-derive available cities from the fetched data
         availableCities = [...new Set(spreadsheetData.map(item => item.city))].sort();
         
         const cityCheckboxesContainer = document.getElementById('cityCheckboxes');
         const dayFilter = document.getElementById('dayFilter');
 
+        // Clear previous filters (in case this is called again)
         cityCheckboxesContainer.innerHTML = '';
         dayFilter.innerHTML = '';
 
-        // --- 1. Add the 'Select All' Checkbox ---
-        const allCheckboxDiv = document.createElement('div');
-        allCheckboxDiv.className = 'flex items-center border-r pr-6 border-gray-300 mr-6 font-bold text-indigo-600';
-
-        const allCheckbox = document.createElement('input');
-        allCheckbox.type = 'checkbox';
-        allCheckbox.id = ALL_CITIES_ID;
-        allCheckbox.value = 'ALL'; 
-        allCheckbox.checked = true; // DEFAULT TO ALL SELECTED
-        allCheckbox.className = 'form-checkbox h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300';
-        allCheckbox.addEventListener('change', toggleAllCities); 
-
-        const allLabel = document.createElement('label');
-        allLabel.htmlFor = ALL_CITIES_ID;
-        allLabel.className = 'ml-2 text-base cursor-pointer select-none';
-        allLabel.textContent = 'All Cities';
-
-        allCheckboxDiv.appendChild(allCheckbox);
-        allCheckboxDiv.appendChild(allLabel);
-        cityCheckboxesContainer.appendChild(allCheckboxDiv);
-
-
-        // 2. Populate Individual Cities (Checkboxes) 
+        // 1. Populate Cities (Checkboxes) - NOW DEFAULT TO UNCHECKED
         availableCities.forEach(city => {
             const id = `city-${city.replace(/\s/g, '-')}`;
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.id = id;
             checkbox.value = city;
-            checkbox.checked = true; // CRITICAL FIX: Must be true initially to match 'All Cities' state
+            checkbox.checked = false; // Default to none selected (Original desired state)
             checkbox.className = 'form-checkbox h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300';
-            checkbox.addEventListener('change', handleIndividualCityChange); 
+            checkbox.addEventListener('change', filterTable); // Attach filter directly
 
             const label = document.createElement('label');
             label.htmlFor = id;
@@ -225,7 +191,7 @@
             cityCheckboxesContainer.appendChild(div);
         });
 
-        // 3. Populate Days (Dropdown)
+        // 2. Populate Days (Dropdown) - NOW STARTS WITH SUN
         daysOfWeek.forEach(day => {
             const option = document.createElement('option');
             option.value = day;
@@ -234,12 +200,13 @@
         });
         dayFilter.addEventListener('change', filterTable);
 
-        filterTable(); 
+        filterTable(); // Initial render (will show "Please select at least one City..." until user selects filters)
     }
 
     // Initialize the filters and table rendering once the page loads
     window.onload = async function() {
         try {
+            // Fetch the CSV data from the Google Sheet
             const response = await fetch(SPREADSHEET_URL);
             
             if (!response.ok) {
@@ -247,20 +214,23 @@
             }
             const csvText = await response.text();
             
+            // Parse the data and assign it to the global variable
             spreadsheetData = parseCSV(csvText);
             
             console.log(`Data loaded successfully. Total ${spreadsheetData.length} rows.`);
 
+            // Now initialize the UI with the fetched data
             initializeFilters();
 
         } catch (error) {
             console.error("Could not load data from Google Sheet:", error);
             
+            // Display error message to the user in the table area
             document.getElementById('dataBody').innerHTML = `
                 <tr class="bg-white">
                     <td colspan="3" class="py-4 px-6 text-center text-red-600 font-bold italic border-b-2 border-red-200">
-                        Error loading spreadsheet data. Please ensure the Google Sheet is publicly shared
-                        (File > Share > Publish to the web) and that columns are ordered as:
+                        Error loading spreadsheet data. Please ensure the Google Sheet is publicly shared 
+                        (File > Share > Publish to the web) and that columns are ordered as: 
                         **A: Restaurant**, **B: City**, **C-I: Sun-Sat**. Data is expected to start on **Row 3**.
                         **NOTE: Rows with empty Restaurant (A) or City (B) names are automatically ignored.**
                     </td>
