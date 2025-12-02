@@ -91,16 +91,15 @@
                     continue; // Skip this row as it's a disclaimer
                 }
 
-                // 2. Check for exact match of "ALL" New BAR
-                if (finalObject.city === 'ALL') {
-                    continue; // Skip this row as it's a disclaimer
-                }
-                
-
-                // --- END DATA CLEANUP ---
+               // --- END DATA CLEANUP ---
 
                 // Column B (Index 1) -> City (Used for filtering)
                 finalObject.city = cleanValue(values[1]);
+
+		// Skip rows where City is "ALL" (case-insensitive)
+		if (finalObject.city && finalObject.city.trim().toUpperCase() === 'ALL') {
+    		     continue;
+		}
                 
                 // Column C (Index 2) onwards -> Days (Sun-Sat)
                 daysOfWeek.forEach((day, index) => {
@@ -324,4 +323,3 @@ Only restaurants with current promotions for the selected day are shown.</p>
 
 </body>
 </html>
-
